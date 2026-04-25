@@ -1,0 +1,72 @@
+const express = require('express');
+const app = express();
+app.use(express.json());
+
+let messages = []; // Временно храним в памяти для простоты запуска на хостинге
+
+// Дизайн и клиент прямо внутри сервера
+app.get('/', (req, res) => {
+    res.send(`
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            body { background: #000; color: #fff; font-family: monospace; display: flex; flex-direction: column; align-items: center; height: 100vh; margin: 0; }
+            #chat { border: 1px solid #fff; width: 90%; max-width: 500px; height: 70vh; overflow-y: auto; margin: 20px 0; padding: 10px; }
+            .controls { width: 90%; max-width: 500px; display: flex; gap: 5px; }
+            input { background: #000; border: 1px solid #fff; color: #fff; padding: 10px; flex-grow: 1; outline: none; }
+            button { background: #fff; color: #000; border: none; padding: 10px; cursor: pointer; font-weight: bold; }
+        </style>
+    </head>
+    <body>
+        <div id="chat"></div>
+        <div id="login">
+            <input type="text" id="nick" placeholder="Твой ник">
+            <button onclick="start()">ВОЙТИ</button>
+        </div>
+        <div id="main" style="display:none" class="controls">
+            <input type="text" id="msg" placeholder="Сообщение..." onkeypress="if(event.key==='Enter')send()">
+            <button onclick="send()">OK</button>
+        </div>
+        <script>
+            let user = '';
+            function start() {
+                user = document.getElementById('nick').value;
+                if(user) {
+                    document.getElementById('login').style.display='none';
+                    document.getElementById('main').style.display='flex';
+                    setInterval(load, 1500);
+                }
+            }
+            async function load() {
+                const r = await fetch('/get-msg');
+                const msgs = await r.json();
+                document.getElementById('chat').innerHTML = msgs.map(m => \`<div><b>\${m.user}:</b> \${m.text}</div>\`).join('');
+            }
+            async function send() {
+                const i = document.getElementById('msg');
+                if(!i.value) return;
+                await fetch('/send-msg', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ user, text: i.value })
+                });
+                i.value = '';
+                load();
+            }
+        </script>
+    </body>
+    </html>
+    `);
+});
+
+app.get('/get-msg', (req, res) => res.json(messages));
+app.post('/send-msg', (req, res) => {
+    messages.push(req.body);
+    if(messages.length > 50) messages.shift();
+    res.sendStatus(200);
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log('Server started'));
