@@ -7,7 +7,6 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
-// --- НАСТРОЙКИ SUPABASE ---
 const SUPABASE_URL = 'https://supabase.co';
 const SUPABASE_KEY = 'sb_publishable_-H6KAVzkf8O0Xk9Oao2JUA_6AygHQtP';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -16,17 +15,13 @@ let db = { users: {}, messages: [] };
 
 async function loadCloudData() {
     try {
-        const { data, error } = await supabase.from('Basedate').select('content').eq('id', 1).single();
-        if (data && data.content) {
-            db = data.content;
-            if (!db.users) db.users = {};
-            if (!db.messages) db.messages = [];
-        }
-    } catch (e) { console.error("Load error:", e); }
+        const { data } = await supabase.from('Basedate').select('content').eq('id', 1).single();
+        if (data && data.content) db = data.content;
+    } catch (e) { console.error(e); }
 }
 
 async function saveCloudData() {
-    try { await supabase.from('Basedate').update({ content: db }).eq('id', 1); } catch (e) { console.error("Save error:", e); }
+    try { await supabase.from('Basedate').update({ content: db }).eq('id', 1); } catch (e) { console.error(e); }
 }
 
 app.use(express.json());
@@ -38,134 +33,132 @@ app.get('/', (req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>Chat Apple Glass</title>
+    <title>Liquid Glass Chat</title>
     <style>
-        :root { --glass: rgba(255, 255, 255, 0.1); --border: rgba(255, 255, 255, 0.15); }
+        :root { --glass: rgba(255, 255, 255, 0.12); --border: rgba(255, 255, 255, 0.18); }
         * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
         
         body { 
-            background: radial-gradient(circle at top left, #2a2a2a, #000); 
+            background: #000; 
+            background-image: radial-gradient(circle at 50% 0%, #333 0%, #000 70%);
             color: #fff; font-family: -apple-system, system-ui, sans-serif; 
             margin: 0; display: flex; height: 100dvh; overflow: hidden; 
             justify-content: center; align-items: center;
         }
 
-        @keyframes liquidIn {
-            0% { transform: scale(0.85); opacity: 0; filter: blur(10px); }
-            100% { transform: scale(1); opacity: 1; filter: blur(0px); }
+        /* АНИМАЦИИ КАПЛИ */
+        @keyframes blobIn {
+            0% { transform: scale(0.3); opacity: 0; filter: blur(15px); }
+            60% { transform: scale(1.1); filter: blur(0px); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes blobOut {
+            0% { transform: scale(1); opacity: 1; }
+            40% { transform: scale(1.1); }
+            100% { transform: scale(0.2); opacity: 0; filter: blur(10px); }
         }
 
         #auth-screen {
-            position: fixed; inset: 0; background: rgba(0,0,0,0.85);
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            z-index: 1000; backdrop-filter: blur(20px); transition: 0.5s;
+            position: fixed; inset: 0; background: rgba(0,0,0,0.8);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 1000; backdrop-filter: blur(25px);
         }
 
         .glass-card {
-            background: var(--glass); backdrop-filter: blur(25px);
-            border: 1px solid var(--border); border-radius: 32px;
-            padding: 24px; width: 90%; max-width: 320px;
-            animation: liquidIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+            background: var(--glass); border: 1px solid var(--border);
+            border-radius: 35px; padding: 30px; width: 85%; max-width: 350px;
+            animation: blobIn 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
-        .main-container {
-            display: none; width: 100%; height: 100%; gap: 12px; padding: 12px;
-            position: relative;
+        .container {
+            display: none; width: 100%; height: 100%; padding: 15px;
+            position: relative; overflow: hidden;
         }
 
-        #sidebar {
-            width: 300px; background: var(--glass); backdrop-filter: blur(30px);
-            border-radius: 28px; border: 1px solid var(--border);
-            display: flex; flex-direction: column; padding: 16px;
-            transition: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        /* Стили панелей */
+        .panel {
+            position: absolute; inset: 15px;
+            background: var(--glass); backdrop-filter: blur(30px);
+            border-radius: 40px; border: 1px solid var(--border);
+            display: flex; flex-direction: column; padding: 20px;
+            transition: 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
-        #chat-area {
-            flex-grow: 1; display: flex; flex-direction: column; gap: 12px;
-            transition: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-        }
+        #sidebar { z-index: 10; }
+        #chat-area { z-index: 20; opacity: 0; transform: scale(0.5); pointer-events: none; }
+
+        /* Состояния выпрыгивания */
+        body.chat-active #sidebar { transform: scale(0.5); opacity: 0; pointer-events: none; }
+        body.chat-active #chat-area { opacity: 1; transform: scale(1); pointer-events: auto; animation: blobIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+        body.show-sidebar #sidebar { animation: blobIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        body.pop-chat #chat-area { animation: blobOut 0.5s cubic-bezier(0.36, 0, 0.66, -0.56) forwards; }
 
         #messages {
-            flex-grow: 1; background: var(--glass); backdrop-filter: blur(25px);
-            border-radius: 28px; border: 1px solid var(--border);
-            padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
+            flex-grow: 1; overflow-y: auto; margin: 15px 0;
+            display: flex; flex-direction: column; gap: 10px;
+            padding-right: 5px;
         }
 
-        .msg-bubble {
-            background: rgba(255,255,255,0.08); padding: 10px 14px;
-            border-radius: 18px; max-width: 85%; align-self: flex-start;
-            font-size: 15px; line-height: 1.4; border: 1px solid var(--border);
+        .bubble {
+            background: rgba(255,255,255,0.07); padding: 12px 16px;
+            border-radius: 22px; max-width: 85%; align-self: flex-start;
+            border: 1px solid var(--border);
         }
-        .msg-bubble.own { align-self: flex-end; background: #fff; color: #000; border: none; }
+        .bubble.own { align-self: flex-end; background: #fff; color: #000; border: none; }
 
         input {
             background: rgba(255,255,255,0.1); border: 1px solid var(--border);
-            border-radius: 18px; padding: 14px; color: #fff; outline: none;
-            font-size: 16px; width: 100%;
+            border-radius: 20px; padding: 15px; color: #fff; outline: none; width: 100%;
         }
         
         button {
-            background: #fff; color: #000; border: none; border-radius: 18px;
-            padding: 14px; font-weight: 600; cursor: pointer; font-size: 15px;
+            background: #fff; color: #000; border: none; border-radius: 20px;
+            padding: 15px; font-weight: bold; cursor: pointer;
         }
 
-        .friend-item {
-            padding: 14px; margin-bottom: 8px; border-radius: 16px;
-            cursor: pointer; background: rgba(255,255,255,0.05);
-            display: flex; align-items: center; gap: 10px;
+        .item {
+            padding: 15px; margin-bottom: 10px; border-radius: 20px;
+            background: rgba(255,255,255,0.05); cursor: pointer;
         }
-        .friend-item.active { background: #fff; color: #000; }
-
-        /* МОБИЛЬНАЯ АДАПТАЦИЯ */
-        @media (max-width: 768px) {
-            .main-container { padding: 8px; gap: 0; }
-            #sidebar { 
-                position: absolute; width: calc(100% - 16px); height: calc(100% - 16px); 
-                z-index: 10; left: 8px; 
-            }
-            #chat-area { position: absolute; width: calc(100% - 16px); height: calc(100% - 16px); left: 8px; transform: translateX(110%); }
-            
-            /* Классы для переключения экранов */
-            body.chat-open #sidebar { transform: translateX(-110%); }
-            body.chat-open #chat-area { transform: translateX(0); }
-        }
-
-        .back-btn { display: none; margin-bottom: 10px; background: transparent; color: #fff; border: 1px solid var(--border); width: fit-content; padding: 8px 15px; }
-        @media (max-width: 768px) { .back-btn { display: block; } }
     </style>
 </head>
-<body id="body-tag">
+<body id="app-body">
     <div id="auth-screen">
         <div class="glass-card">
-            <h2 style="text-align: center; margin: 0 0 20px 0;">Chat 1997</h2>
-            <input type="text" id="nick" placeholder="Логин" autocomplete="off">
+            <h1 style="text-align: center; margin-bottom: 25px;">Liquid Chat</h1>
+            <input type="text" id="nick" placeholder="Username" autocomplete="off">
             <div style="height:10px"></div>
-            <input type="password" id="pass" placeholder="Пароль">
+            <input type="password" id="pass" placeholder="Password">
             <div style="height:20px"></div>
-            <button onclick="auth()" style="width: 100%;">Войти</button>
+            <button onclick="auth()" style="width: 100%;">ACCESS</button>
         </div>
     </div>
 
-    <div class="main-container" id="main-ui">
-        <div id="sidebar">
-            <h3 style="margin: 0 0 15px 10px;">Чаты</h3>
-            <div class="friend-item active" id="t-global" onclick="switchChat('global')">🌏 Глобальный</div>
-            <div id="friend-list" style="overflow-y:auto; flex-grow:1;"></div>
-            <div style="padding-top: 15px; border-top: 1px solid var(--border);">
-                <input type="text" id="snick" placeholder="Поиск ника..." style="margin-bottom:8px; font-size:14px; padding:10px;">
-                <button onclick="addF()" style="width: 100%; padding: 10px; font-size: 14px;">Добавить друга</button>
+    <div class="container" id="main-ui">
+        <!-- СПИСОК ЧАТОВ -->
+        <div id="sidebar" class="panel">
+            <h2 style="margin: 0 0 20px 10px;">Chats</h2>
+            <div class="item" onclick="switchChat('global')" style="background: #fff; color: #000; font-weight: bold;">🌏 Global Room</div>
+            <div id="friend-list" style="flex-grow:1; overflow-y:auto;"></div>
+            <div style="padding-top: 15px;">
+                <input type="text" id="snick" placeholder="Find user..." style="margin-bottom:8px;">
+                <button onclick="addF()" style="width: 100%;">Add Friend</button>
                 <div id="request-list"></div>
             </div>
         </div>
 
-        <div id="chat-area">
-            <button class="back-btn" onclick="closeChat()">← Назад</button>
+        <!-- ОКНО ЧАТА -->
+        <div id="chat-area" class="panel">
+            <div style="display:flex; align-items:center; gap:15px; margin-bottom: 10px;">
+                <button onclick="closeChat()" style="background: transparent; color: #fff; border: 1px solid var(--border); padding: 10px 15px;">←</button>
+                <h3 id="chat-title" style="margin:0;">Global</h3>
+            </div>
             <div id="messages"></div>
-            <div style="display:flex; gap:8px; background: var(--glass); padding: 8px; border-radius: 24px; border: 1px solid var(--border); backdrop-filter: blur(15px);">
-                <input type="text" id="m" style="flex-grow:1; border: none; background: transparent;" placeholder="Сообщение..." autocomplete="off">
-                <button onclick="send()" style="width: 50px; border-radius: 18px;">OK</button>
+            <div style="display:flex; gap:10px;">
+                <input type="text" id="m" placeholder="Message..." autocomplete="off">
+                <button onclick="send()" style="width: 60px;">OK</button>
             </div>
         </div>
     </div>
@@ -173,7 +166,7 @@ app.get('/', (req, res) => {
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io(); let myNick = '', currentChat = 'global';
-        const body = document.getElementById('body-tag');
+        const body = document.getElementById('app-body');
 
         async function auth() {
             const username = document.getElementById('nick').value.trim();
@@ -182,13 +175,26 @@ app.get('/', (req, res) => {
             const res = await fetch('/auth', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username, password}) });
             if (res.ok) {
                 myNick = username;
-                document.getElementById('auth-screen').style.opacity = '0';
-                setTimeout(() => {
-                    document.getElementById('auth-screen').style.display = 'none';
-                    document.getElementById('main-ui').style.display = 'flex';
-                }, 500);
+                document.getElementById('auth-screen').style.display = 'none';
+                document.getElementById('main-ui').style.display = 'block';
                 socket.emit('join', myNick); refreshUI(); setInterval(refreshUI, 5000);
-            } else { alert('Ошибка доступа'); }
+            }
+        }
+
+        function switchChat(t) { 
+            currentChat = t;
+            document.getElementById('chat-title').innerText = t === 'global' ? 'Global' : t;
+            body.classList.remove('show-sidebar', 'pop-chat');
+            body.classList.add('chat-active');
+            loadH(); 
+        }
+
+        function closeChat() {
+            body.classList.add('pop-chat');
+            setTimeout(() => {
+                body.classList.remove('chat-active', 'pop-chat');
+                body.classList.add('show-sidebar');
+            }, 400);
         }
 
         async function refreshUI() {
@@ -196,30 +202,20 @@ app.get('/', (req, res) => {
             const user = await res.json();
             const fl = document.getElementById('friend-list'); fl.innerHTML = '';
             (user.friends || []).forEach(f => {
-                const div = document.createElement('div'); div.className = 'friend-item' + (currentChat === f ? ' active' : '');
+                const div = document.createElement('div'); div.className = 'item';
                 div.innerText = '👤 ' + f; div.onclick = () => switchChat(f); fl.appendChild(div);
             });
             const rl = document.getElementById('request-list'); rl.innerHTML = '';
             (user.requests || []).forEach(r => {
-                rl.innerHTML += \`<div style="font-size:12px; padding:10px; background:rgba(255,255,0,0.1); border-radius:15px; margin-top:10px; border:1px solid rgba(255,255,0,0.2)">Запрос: \${r} <button onclick="accept('\${r}')" style="padding:4px 8px; border-radius:8px; font-size:10px;">OK</button></div>\`;
+                rl.innerHTML += \`<div class="item" style="font-size:12px; border:1px dashed #fff;">\${r} <button onclick="accept('\${r}')" style="padding:5px 10px; border-radius:10px; float:right;">OK</button></div>\`;
             });
         }
-
-        function switchChat(t) { 
-            currentChat = t; 
-            document.querySelectorAll('.friend-item').forEach(el => el.classList.remove('active'));
-            if(t === 'global') document.getElementById('t-global').classList.add('active');
-            if(window.innerWidth <= 768) body.classList.add('chat-open');
-            loadH(); 
-        }
-
-        function closeChat() { body.classList.remove('chat-open'); }
 
         async function loadH() {
             const res = await fetch(\`/history/\${myNick}/\${currentChat}\`); const msgs = await res.json();
             document.getElementById('messages').innerHTML = msgs.map(m => \`
-                <div class="msg-bubble \${m.from === myNick ? 'own' : ''}">
-                    <div style="font-size: 11px; opacity: 0.6; margin-bottom: 2px;">\${m.from}</div>
+                <div class="bubble \${m.from === myNick ? 'own' : ''}">
+                    <div style="font-size: 10px; opacity: 0.5;">\${m.from}</div>
                     \${m.text}
                 </div>\`).join('');
             const box = document.getElementById('messages'); box.scrollTop = box.scrollHeight;
@@ -228,8 +224,7 @@ app.get('/', (req, res) => {
         function send() { const i = document.getElementById('m'); if(!i.value.trim()) return; socket.emit('msg', {to:currentChat, text:i.value}); i.value=''; }
         socket.on('msg', () => loadH());
         document.getElementById('m').onkeypress = (e) => { if(e.key==='Enter') send() };
-
-        async function addF() { const t = document.getElementById('snick').value.trim(); await fetch('/add-friend', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({myNick, targetNick:t}) }); alert('Запрос отправлен'); }
+        async function addF() { const t = document.getElementById('snick').value.trim(); await fetch('/add-friend', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({myNick, targetNick:t}) }); alert('Sent!'); }
         async function accept(t) { await fetch('/accept-friend', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({myNick, targetNick:t}) }); refreshUI(); }
     </script>
 </body>
@@ -237,13 +232,11 @@ app.get('/', (req, res) => {
     `);
 });
 
-// --- API (ОСТАВЛЯЕМ БЕЗ ИЗМЕНЕНИЙ) ---
+// API (Оставляем без изменений)
 app.post('/auth', async (req, res) => {
     const { username, password } = req.body;
-    if (!db.users[username]) {
-        db.users[username] = { password, friends: [], requests: [] };
-        await saveCloudData();
-    } else if (db.users[username].password !== password) return res.status(401).send();
+    if (!db.users[username]) { db.users[username] = { password, friends: [], requests: [] }; await saveCloudData(); }
+    else if (db.users[username].password !== password) return res.status(401).send();
     res.json(db.users[username]);
 });
 app.get('/user/:nick', (req, res) => res.json(db.users[req.params.nick] || {friends:[], requests:[]}));
@@ -281,6 +274,6 @@ io.on('connection', (socket) => {
 async function init() {
     await loadCloudData();
     const PORT = process.env.PORT || 3000;
-    server.listen(PORT, '0.0.0.0', () => console.log('LOG: v6.1 Mobile Glass LIVE'));
+    server.listen(PORT, '0.0.0.0', () => console.log('v7.0 Liquid Glass Live'));
 }
 init();
