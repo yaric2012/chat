@@ -7,56 +7,51 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
-// --- ДАННЫЕ SUPABASE ---
+// --- НАСТРОЙКИ SUPABASE ---
 const SUPABASE_URL = 'https://supabase.co';
 const SUPABASE_KEY = 'sb_publishable_-H6KAVzkf8O0Xk9Oao2JUA_6AygHQtP';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let db = { users: {}, messages: [] };
 
-// Функция загрузки: ждем её завершения перед стартом сервера
+// Функция загрузки данных из облака
 async function loadCloudData() {
-    console.log("LOG: Попытка загрузки данных из Supabase...");
+    console.log("LOG: Загрузка из таблицы Basedate...");
     try {
         const { data, error } = await supabase
-            .from('storage')
+            .from('Basedate')
             .select('content')
             .eq('id', 1)
             .single();
 
-        if (error) {
-            console.error("LOG: Ошибка при чтении из Supabase:", error.message);
-            return;
-        }
+        if (error) throw error;
 
         if (data && data.content) {
             db = data.content;
             if (!db.users) db.users = {};
             if (!db.messages) db.messages = [];
-            console.log("LOG: Данные успешно загружены из облака!");
+            console.log("LOG: ДАННЫЕ УСПЕШНО ЗАГРУЖЕНЫ ИЗ ОБЛАКА!");
         }
     } catch (e) {
-        console.error("LOG: Критическая ошибка загрузки:", e);
+        console.error("LOG: ОШИБКА ЗАГРУЗКИ (используем пустую базу):", e.message);
     }
 }
 
-// Функция сохранения: отправляем текущий слепок db в облако
+// Функция сохранения данных в облако
 async function saveCloudData() {
     try {
-        const { error } = await supabase
-            .from('storage')
+        await supabase
+            .from('Basedate')
             .update({ content: db })
             .eq('id', 1);
-        
-        if (error) console.error("LOG: Ошибка сохранения:", error.message);
     } catch (e) {
-        console.error("LOG: Не удалось сохранить данные:", e);
+        console.error("LOG: ОШИБКА СОХРАНЕНИЯ:", e.message);
     }
 }
 
 app.use(express.json());
 
-// --- ФРОНТЕНД ЧАТА ---
+// --- ФРОНТЕНД (HTML) ---
 app.get('/', (req, res) => {
     res.send(`
 <!DOCTYPE html>
@@ -64,7 +59,7 @@ app.get('/', (req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Chat 1997 v5.1 Cloud</title>
+    <title>Chat 1997 v5.2 Stable</title>
     <style>
         body { background: #000; color: #fff; font-family: monospace; margin: 0; display: flex; height: 100vh; overflow: hidden; }
         #auth-screen { position: fixed; inset: 0; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; border: 4px double #fff; padding: 20px; box-sizing: border-box; }
@@ -82,11 +77,11 @@ app.get('/', (req, res) => {
 </head>
 <body>
     <div id="auth-screen">
-        <h2 style="letter-spacing: 3px;">CHAT 1997 v5.1</h2>
-        <p style="color: #0f0; font-size: 10px;">-- CLOUD SYNC: ENABLED --</p>
+        <h2 style="letter-spacing: 3px;">CHAT 1997 v5.2</h2>
+        <p style="color: #0f0; font-size: 10px;">[ CLOUD STORAGE: ENABLED ]</p>
         <input type="text" id="nick" placeholder="NICKNAME" maxlength="12">
         <input type="password" id="pass" placeholder="PASSWORD">
-        <button onclick="auth()" style="width: 150px;">LOGIN</button>
+        <button onclick="auth()" style="width: 150px;">ENTER</button>
     </div>
 
     <div id="sidebar">
@@ -99,9 +94,9 @@ app.get('/', (req, res) => {
     </div>
 
     <div id="chat-area">
-        <div id="chat-title" style="font-weight:bold; margin-bottom:10px; border-bottom:1px solid #fff;"># GLOBAL</div>
+        <div id="chat-title" style="font-weight:bold; margin-bottom:10px; border-bottom: 1px solid #fff;"># GLOBAL</div>
         <div id="messages"></div>
-        <div style="display:flex; gap:5px"><input type="text" id="m" style="flex-grow:1" placeholder="TYPE..." autocomplete="off"><button onclick="send()">OK</button></div>
+        <div style="display:flex; gap:5px"><input type="text" id="m" style="flex-grow:1" placeholder="..." autocomplete="off"><button onclick="send()">OK</button></div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
@@ -116,7 +111,7 @@ app.get('/', (req, res) => {
             if (res.ok) {
                 myNick = username; document.getElementById('auth-screen').style.display = 'none';
                 socket.emit('join', myNick); refreshUI(); setInterval(refreshUI, 5000);
-            } else { alert('WRONG PASSWORD OR ACCESS DENIED'); }
+            } else { alert('ОШИБКА ДОСТУПА'); }
         }
 
         async function refreshUI() {
@@ -136,7 +131,7 @@ app.get('/', (req, res) => {
         }
 
         function switchChat(t) { currentChat = t; document.getElementById('chat-title').innerText = t==='global'?'# GLOBAL':'@ '+t; loadH(); }
-        async function addF() { const targetNick = document.getElementById('snick').value.trim(); await fetch('/add-friend', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({myNick, targetNick}) }); alert('SENT'); }
+        async function addF() { const targetNick = document.getElementById('snick').value.trim(); await fetch('/add-friend', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({myNick, targetNick}) }); alert('ЗАПРОС ОТПРАВЛЕН'); }
         async function accept(t) { await fetch('/accept-friend', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({myNick, targetNick:t}) }); refreshUI(); }
         
         async function loadH() {
@@ -209,10 +204,9 @@ io.on('connection', (socket) => {
     });
 });
 
-// Запуск после загрузки
 async function init() {
     await loadCloudData();
     const PORT = process.env.PORT || 3000;
-    server.listen(PORT, '0.0.0.0', () => console.log('LOG: v5.1 CLOUD SERVER STARTED ON ' + PORT));
+    server.listen(PORT, '0.0.0.0', () => console.log('LOG: v5.2 STABLE CLOUD STARTED ON ' + PORT));
 }
 init();
